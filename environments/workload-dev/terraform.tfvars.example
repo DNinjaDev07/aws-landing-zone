@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars and fill in your values
+# cp terraform.tfvars.example terraform.tfvars
+
+environment        = "workload-dev"
+aws_region         = "us-east-1"
+management_account_id = "123456789012"
+workload_account_id   = "210987654321"
+alert_email        = "you@example.com"
+vpc_cidr           = "10.0.0.0/16"
