@@ -33,3 +33,10 @@ Thumbs.db
 .env
 *.tfvars
 !*.tfvars.example
+
+# Local backend config (generated from bootstrap outputs)
+environments/workload-dev/backend-*.hcl
+!environments/workload-dev/backend-*.hcl.example
+
+# Planning
+PROJECT_1_LANDING_ZONE_PLAN.md
