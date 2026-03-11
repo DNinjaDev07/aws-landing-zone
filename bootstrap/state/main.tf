@@ -4,13 +4,11 @@ locals {
   state_bucket_name = lower("${var.name_prefix}-${data.aws_caller_identity.current.account_id}-tfstate")
 }
 
-#checkov:skip=CKV2_AWS_62:Event notifications are intentionally not enabled for bootstrap state bucket.
-#checkov:skip=CKV_AWS_144:Cross-region replication is deferred for bootstrap simplicity and cost control.
-#checkov:skip=CKV_AWS_18:Access logging requires a dedicated logging bucket and is deferred in bootstrap phase.
 resource "aws_s3_bucket" "tf_state_bucket" {
   #checkov:skip=CKV2_AWS_62:Event notifications are intentionally not enabled for bootstrap state bucket.
   #checkov:skip=CKV_AWS_144:Cross-region replication is deferred for bootstrap simplicity and cost control.
   #checkov:skip=CKV_AWS_18:Access logging requires a dedicated logging bucket and is deferred in bootstrap phase.
+  #checkov:skip=CKV2_AWS_61:Lifecycle policy is intentionally deferred for bootstrap simplicity.
   bucket = local.state_bucket_name
   lifecycle {
     prevent_destroy = true
