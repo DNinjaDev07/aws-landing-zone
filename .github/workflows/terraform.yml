@@ -56,13 +56,14 @@ jobs:
 
             - name: Terraform Init
               working-directory: environments/workload-dev
-              run: terraform init \
-                  -backend-config="bucket=${TF_STATE_BUCKET}" \
-                  -backend-config="key=${{env.TF_BACKEND_KEY}}" \
-                  -backend-config="region=${{env.AWS_REGION}}" \
-                  -backend-config="encrypt=${{env.TF_ENCRYPT_FLAG}}" \
-                  -backend-config="use_lockfile=${{env.TF_USE_LOCKFILE}}" \
-                  -reconfigure
+              run: |
+                  terraform init \
+                    -backend-config="bucket=${TF_STATE_BUCKET}" \
+                    -backend-config="key=${{ env.TF_BACKEND_KEY }}" \
+                    -backend-config="region=${{ env.AWS_REGION }}" \
+                    -backend-config="encrypt=${{ env.TF_ENCRYPT_FLAG }}" \
+                    -backend-config="use_lockfile=${{ env.TF_USE_LOCKFILE }}" \
+                    -reconfigure
 
             - name: Terraform Validate
               working-directory: environments/workload-dev
@@ -99,13 +100,14 @@ jobs:
 
             - name: Terraform Init
               working-directory: environments/workload-dev
-              run: terraform init \
-                  -backend-config="bucket=${TF_STATE_BUCKET}" \
-                  -backend-config="key=${{env.TF_BACKEND_KEY}}" \
-                  -backend-config="region=${{env.AWS_REGION}}" \
-                  -backend-config="encrypt=${{env.TF_ENCRYPT_FLAG}}" \
-                  -backend-config="use_lockfile=${{env.TF_USE_LOCKFILE}}" \
-                  -reconfigure
+              run: |
+                  terraform init \
+                    -backend-config="bucket=${TF_STATE_BUCKET}" \
+                    -backend-config="key=${{ env.TF_BACKEND_KEY }}" \
+                    -backend-config="region=${{ env.AWS_REGION }}" \
+                    -backend-config="encrypt=${{ env.TF_ENCRYPT_FLAG }}" \
+                    -backend-config="use_lockfile=${{ env.TF_USE_LOCKFILE }}" \
+                    -reconfigure
 
             - name: Download Terraform Plan
               uses: actions/download-artifact@v4
