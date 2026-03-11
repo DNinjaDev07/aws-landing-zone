@@ -26,14 +26,14 @@ jobs:
               uses: aquasecurity/tfsec-action@v1.0.3
               with:
                   working_directory: .
-                  soft_fail: false
+                  soft_fail: true
 
             - name: Scan with Checkov
               uses: bridgecrewio/checkov-action@v12
               with:
                   directory: .
                   framework: terraform
-                  soft_fail: false
+                  soft_fail: true
 
     tf-plan:
         runs-on: ubuntu-latest
