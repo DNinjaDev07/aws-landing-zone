@@ -4,10 +4,6 @@ resource "aws_iam_openid_connect_provider" "github_oidc_provider" {
   client_id_list = [
     "sts.amazonaws.com",
   ]
-
-  thumbprint_list = [
-    "6938fd4d98bab03faadb97b34396831e3780aea",
-  ]
 }
 
 
@@ -24,11 +20,22 @@ resource "aws_iam_role" "github_oidc_role" {
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          }
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:superstart-devops/aws-landing-zone:*"
+            "token.actions.githubusercontent.com:sub" = [
+              "repo:DNinjaDev07/aws-landing-zone:ref:refs/heads/main",
+              "repo:DNinjaDev07/aws-landing-zone:pull_request",
+            ]
           }
         }
       }
     ]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "github_oidc_admin_access" {
+  role       = aws_iam_role.github_oidc_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }

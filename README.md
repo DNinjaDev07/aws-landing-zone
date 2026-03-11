@@ -20,7 +20,7 @@ A Terraform-based AWS Landing Zone deployed through a secure CI/CD pipeline. The
 
 | Component | Purpose |
 |-----------|---------|
-| Terraform State | S3 bucket (encrypted, versioned) + DynamoDB lock table |
+| Terraform State | S3 bucket (encrypted, versioned) with S3 locking enabled |
 | OIDC Provider | GitHub Actions trust — federated authentication via `sts:AssumeRoleWithWebIdentity` |
 | AWS Organizations | Workloads OU and Sandbox OU with member accounts |
 | Service Control Policies | Region restriction, deny root usage, require encryption |
