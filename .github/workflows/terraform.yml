@@ -1,0 +1,118 @@
+name: Terraform workflow
+
+on:
+    push:
+        branches: [main]
+
+permissions:
+    id-token: write
+    contents: read
+
+env:
+    AWS_REGION: us-east-2
+    AWS_OIDC_ROLE_ARN: arn:aws:iam::416126707184:role/github-oidc-role
+    TF_BACKEND_KEY: workload-dev/terraform.tfstate
+    TF_ENCRYPT_FLAG: true
+    TF_USE_LOCKFILE: true
+
+jobs:
+    tf-scan:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Scan with tfsec
+              uses: aquasecurity/tfsec-action@v1.0.3
+              with:
+                  working_directory: .
+                  soft_fail: false
+
+            - name: Scan with Checkov
+              uses: bridgecrewio/checkov-action@v12
+              with:
+                  directory: .
+                  framework: terraform
+                  soft_fail: false
+
+    tf-plan:
+        runs-on: ubuntu-latest
+        needs: tf-scan
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
+                  aws-region: ${{ env.AWS_REGION }}
+                  role-session-name: github-oidc-tf-plan
+
+            - uses: hashicorp/setup-terraform@v3
+
+            - name: Resolved backend bucket
+              run: |
+                  ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+                  echo "TF_STATE_BUCKET=landing-zone-${ACCOUNT_ID}-tfstate" >> $GITHUB_ENV
+
+            - name: Terraform Init
+              working-directory: environments/workload-dev
+              run: terraform init \
+                  -backend-config="bucket=${TF_STATE_BUCKET}" \
+                  -backend-config="key=${{env.TF_BACKEND_KEY}}" \
+                  -backend-config="region=${{env.AWS_REGION}}" \
+                  -backend-config="encrypt=${{env.TF_ENCRYPT_FLAG}}" \
+                  -backend-config="use_lockfile=${{env.TF_USE_LOCKFILE}}" \
+                  -reconfigure
+
+            - name: Terraform Validate
+              working-directory: environments/workload-dev
+              run: terraform validate
+
+            - name: Terraform Plan
+              working-directory: environments/workload-dev
+              run: terraform plan -no-color -out=tfplan
+
+            - name: Upload Terraform Plan
+              uses: actions/upload-artifact@v4
+              with:
+                  name: tfplan
+                  path: environments/workload-dev/tfplan
+
+    tf-apply:
+        runs-on: ubuntu-latest
+        needs: tf-plan
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
+                  aws-region: ${{ env.AWS_REGION }}
+                  role-session-name: github-oidc-tf-apply
+
+            - uses: hashicorp/setup-terraform@v3
+
+            - name: Resolved backend bucket
+              run: |
+                  ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+                  echo "TF_STATE_BUCKET=landing-zone-${ACCOUNT_ID}-tfstate" >> $GITHUB_ENV
+
+            - name: Terraform Init
+              working-directory: environments/workload-dev
+              run: terraform init \
+                  -backend-config="bucket=${TF_STATE_BUCKET}" \
+                  -backend-config="key=${{env.TF_BACKEND_KEY}}" \
+                  -backend-config="region=${{env.AWS_REGION}}" \
+                  -backend-config="encrypt=${{env.TF_ENCRYPT_FLAG}}" \
+                  -backend-config="use_lockfile=${{env.TF_USE_LOCKFILE}}" \
+                  -reconfigure
+
+            - name: Download Terraform Plan
+              uses: actions/download-artifact@v4
+              with:
+                  name: tfplan
+                  path: environments/workload-dev
+
+            - name: Terraform Apply
+              working-directory: environments/workload-dev
+              run: terraform apply -auto-approve -no-color tfplan
