@@ -4,7 +4,6 @@ locals {
   state_bucket_name = lower("${var.name_prefix}-${data.aws_caller_identity.current.account_id}-tfstate")
 }
 
-#checkov:skip=CKV2_AWS_61:Lifecycle policy is intentionally deferred for bootstrap simplicity.
 #checkov:skip=CKV2_AWS_62:Event notifications are intentionally not enabled for bootstrap state bucket.
 #checkov:skip=CKV_AWS_144:Cross-region replication is deferred for bootstrap simplicity and cost control.
 #checkov:skip=CKV_AWS_18:Access logging requires a dedicated logging bucket and is deferred in bootstrap phase.
@@ -19,6 +18,19 @@ resource "aws_s3_bucket_versioning" "tf_state_bucket_versioning" {
   bucket = aws_s3_bucket.tf_state_bucket.id
   versioning_configuration {
     status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "tf_state_bucket_lifecycle" {
+  bucket = aws_s3_bucket.tf_state_bucket.id
+
+  rule {
+    id     = "noncurrent-version-expiration"
+    status = "Enabled"
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
   }
 }
 
