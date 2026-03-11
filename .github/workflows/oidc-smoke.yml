@@ -2,14 +2,22 @@ name: OIDC Smoke Test
 
 on:
     workflow_dispatch:
+    push:
+        branches: [main]
+
+permissions:
+    id-token: write
+    contents: read
+
 jobs:
     smoke-test:
         runs-on: ubuntu-latest
         steps:
-            - uses: aws-actions/configure-aws-credentials@v2
+            - uses: aws-actions/configure-aws-credentials@v4
               with:
                   role-to-assume: arn:aws:iam::416126707184:role/github-oidc-role
                   aws-region: us-east-2
                   role-session-name: github-oidc-smoke-test
+
             - name: Verify Identity
               run: aws sts get-caller-identity
