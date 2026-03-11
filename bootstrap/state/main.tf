@@ -4,6 +4,10 @@ locals {
   state_bucket_name = lower("${var.name_prefix}-${data.aws_caller_identity.current.account_id}-tfstate")
 }
 
+#checkov:skip=CKV2_AWS_61:Lifecycle policy is intentionally deferred for bootstrap simplicity.
+#checkov:skip=CKV2_AWS_62:Event notifications are intentionally not enabled for bootstrap state bucket.
+#checkov:skip=CKV_AWS_144:Cross-region replication is deferred for bootstrap simplicity and cost control.
+#checkov:skip=CKV_AWS_18:Access logging requires a dedicated logging bucket and is deferred in bootstrap phase.
 resource "aws_s3_bucket" "tf_state_bucket" {
   bucket = local.state_bucket_name
   lifecycle {
@@ -27,6 +31,7 @@ resource "aws_s3_bucket_public_access_block" "tf_state_bucket_public_access_bloc
   restrict_public_buckets = true
 }
 
+#checkov:skip=CKV_AWS_145:Using AES256 for bootstrap simplicity; KMS-based encryption will be added later.
 resource "aws_s3_bucket_server_side_encryption_configuration" "tf_state_bucket_encryption" {
   bucket = aws_s3_bucket.tf_state_bucket.id
 

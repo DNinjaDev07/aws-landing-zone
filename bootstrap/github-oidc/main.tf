@@ -6,7 +6,6 @@ resource "aws_iam_openid_connect_provider" "github_oidc_provider" {
   ]
 }
 
-
 resource "aws_iam_role" "github_oidc_role" {
   name = "github-oidc-role"
 
@@ -35,6 +34,7 @@ resource "aws_iam_role" "github_oidc_role" {
   })
 }
 
+#checkov:skip=CKV_AWS_274:AdministratorAccess is intentionally temporary for bootstrap and will be replaced later.
 resource "aws_iam_role_policy_attachment" "github_oidc_admin_access" {
   role       = aws_iam_role.github_oidc_role.name
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
