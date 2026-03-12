@@ -1,5 +1,5 @@
 variable "aws_region" {
-  description = "AWS Region."
+  description = "AWS region for the workload environment."
   type        = string
   default     = "us-east-2"
 }
@@ -12,14 +12,4 @@ variable "aws_tags" {
     "Project"     = "AWS Landing Zone"
     "Owner"       = "SuperStar_DevOps"
   }
-}
-
-# variable "s3_tf_bucket_name" {
-#   description = "S3 Bucket for tf state"
-#   default     = "tf_state_bucket"
-# }
-
-variable "name_prefix" {
-  default = "landing-zone"
-  type    = string
 }
