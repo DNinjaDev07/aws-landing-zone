@@ -1,0 +1,53 @@
+name: Terraform Init Backend
+description: Resolve backend bucket from AWS account ID and run terraform init
+
+inputs:
+  working-directory:
+    description: Directory containing Terraform root module
+    required: true
+  backend-key:
+    description: Backend state key path
+    required: true
+  aws-region:
+    description: AWS region for backend bucket
+    required: true
+  encrypt:
+    description: Backend encrypt flag
+    required: false
+    default: "true"
+  use-lockfile:
+    description: Enable S3 native state locking
+    required: false
+    default: "true"
+  bucket-prefix:
+    description: Prefix used for backend bucket naming
+    required: false
+    default: "landing-zone"
+
+outputs:
+  state-bucket:
+    description: Computed Terraform backend bucket name
+    value: ${{ steps.resolve.outputs.state_bucket }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+        ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+        STATE_BUCKET="${{ inputs.bucket-prefix }}-${ACCOUNT_ID}-tfstate"
+        echo "state_bucket=${STATE_BUCKET}" >> "$GITHUB_OUTPUT"
+
+    - shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        terraform init \
+          -backend-config="bucket=${{ steps.resolve.outputs.state_bucket }}" \
+          -backend-config="key=${{ inputs.backend-key }}" \
+          -backend-config="region=${{ inputs.aws-region }}" \
+          -backend-config="encrypt=${{ inputs.encrypt }}" \
+          -backend-config="use_lockfile=${{ inputs.use-lockfile }}" \
+          -reconfigure
