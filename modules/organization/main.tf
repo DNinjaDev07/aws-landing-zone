@@ -1,12 +1,12 @@
 data "aws_organizations_organization" "aws_org" {}
 
 resource "aws_organizations_organizational_unit" "workloads" {
-  name      = "Workloads"
+  name      = var.workloads_ou_name
   parent_id = data.aws_organizations_organization.aws_org.roots[0].id
 }
 
 resource "aws_organizations_organizational_unit" "sandbox" {
-  name      = "Sandbox"
+  name      = var.sandbox_ou_name
   parent_id = data.aws_organizations_organization.aws_org.roots[0].id
 }
 

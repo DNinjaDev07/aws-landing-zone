@@ -9,3 +9,7 @@ output "sandbox_ou_id" {
 output "organization_id" {
   value = data.aws_organizations_organization.aws_org.id
 }
+
+output "root_id" {
+  value = data.aws_organizations_organization.aws_org.roots[0].id
+}
