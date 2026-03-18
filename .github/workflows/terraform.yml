@@ -1,106 +1,108 @@
 name: Terraform workflow
 
 on:
-    push:
-        branches: [main]
+  push:
+    branches: [main]
 
 permissions:
-    id-token: write
-    contents: read
+  id-token: write
+  contents: read
 
 env:
-    AWS_REGION: us-east-2
-    AWS_OIDC_ROLE_ARN: arn:aws:iam::416126707184:role/github-oidc-role
-    TF_BACKEND_KEY: workload-dev/terraform.tfstate
-    TF_ENCRYPT_FLAG: true
-    TF_USE_LOCKFILE: true
+  AWS_REGION: us-east-2
+  AWS_OIDC_ROLE_ARN: arn:aws:iam::416126707184:role/github-oidc-role
+  TF_BACKEND_KEY: workload-dev/terraform.tfstate
+  TF_ENCRYPT_FLAG: true
+  TF_USE_LOCKFILE: true
+  TF_VAR_environment: workload-dev
+  TF_VAR_workload_account_id: 128624577044
 
 jobs:
-    tf-scan:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+  tf-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            - name: Scan with tfsec
-              uses: aquasecurity/tfsec-action@v1.0.3
-              with:
-                  working_directory: .
-                  soft_fail: true
+      - name: Scan with tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: .
+          soft_fail: true
 
-            - name: Scan with Checkov
-              uses: bridgecrewio/checkov-action@v12
-              with:
-                  directory: .
-                  framework: terraform
-                  soft_fail: true
+      - name: Scan with Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform
+          soft_fail: true
 
-    tf-plan:
-        runs-on: ubuntu-latest
-        needs: tf-scan
-        steps:
-            - uses: actions/checkout@v4
+  tf-plan:
+    runs-on: ubuntu-latest
+    needs: tf-scan
+    steps:
+      - uses: actions/checkout@v4
 
-            - uses: aws-actions/configure-aws-credentials@v4
-              with:
-                  role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
-                  aws-region: ${{ env.AWS_REGION }}
-                  role-session-name: github-oidc-tf-plan
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-oidc-tf-plan
 
-            - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
 
-            - name: Terraform Init Backend
-              uses: ./.github/actions/terraform-init-backend
-              with:
-                  working-directory: environments/workload-dev
-                  backend-key: ${{ env.TF_BACKEND_KEY }}
-                  aws-region: ${{ env.AWS_REGION }}
-                  encrypt: ${{ env.TF_ENCRYPT_FLAG }}
-                  use-lockfile: ${{ env.TF_USE_LOCKFILE }}
+      - name: Terraform Init Backend
+        uses: ./.github/actions/terraform-init-backend
+        with:
+          working-directory: environments/workload-dev
+          backend-key: ${{ env.TF_BACKEND_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          encrypt: ${{ env.TF_ENCRYPT_FLAG }}
+          use-lockfile: ${{ env.TF_USE_LOCKFILE }}
 
-            - name: Terraform Validate
-              working-directory: environments/workload-dev
-              run: terraform validate
+      - name: Terraform Validate
+        working-directory: environments/workload-dev
+        run: terraform validate
 
-            - name: Terraform Plan
-              working-directory: environments/workload-dev
-              run: terraform plan -no-color -out=tfplan
+      - name: Terraform Plan
+        working-directory: environments/workload-dev
+        run: terraform plan -no-color -out=tfplan
 
-            - name: Upload Terraform Plan
-              uses: actions/upload-artifact@v4
-              with:
-                  name: tfplan
-                  path: environments/workload-dev/tfplan
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: environments/workload-dev/tfplan
 
-    tf-apply:
-        runs-on: ubuntu-latest
-        needs: tf-plan
-        steps:
-            - uses: actions/checkout@v4
+  tf-apply:
+    runs-on: ubuntu-latest
+    needs: tf-plan
+    steps:
+      - uses: actions/checkout@v4
 
-            - uses: aws-actions/configure-aws-credentials@v4
-              with:
-                  role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
-                  aws-region: ${{ env.AWS_REGION }}
-                  role-session-name: github-oidc-tf-apply
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-oidc-tf-apply
 
-            - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
 
-            - name: Terraform Init Backend
-              uses: ./.github/actions/terraform-init-backend
-              with:
-                  working-directory: environments/workload-dev
-                  backend-key: ${{ env.TF_BACKEND_KEY }}
-                  aws-region: ${{ env.AWS_REGION }}
-                  encrypt: ${{ env.TF_ENCRYPT_FLAG }}
-                  use-lockfile: ${{ env.TF_USE_LOCKFILE }}
+      - name: Terraform Init Backend
+        uses: ./.github/actions/terraform-init-backend
+        with:
+          working-directory: environments/workload-dev
+          backend-key: ${{ env.TF_BACKEND_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          encrypt: ${{ env.TF_ENCRYPT_FLAG }}
+          use-lockfile: ${{ env.TF_USE_LOCKFILE }}
 
-            - name: Download Terraform Plan
-              uses: actions/download-artifact@v4
-              with:
-                  name: tfplan
-                  path: environments/workload-dev
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: environments/workload-dev
 
-            - name: Terraform Apply
-              working-directory: environments/workload-dev
-              run: terraform apply -auto-approve -no-color tfplan
+      - name: Terraform Apply
+        working-directory: environments/workload-dev
+        run: terraform apply -auto-approve -no-color tfplan
