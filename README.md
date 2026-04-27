@@ -14,7 +14,7 @@ Actions using OIDC (no long-lived AWS keys in CI).
 | `modules/organization` | Workloads + Sandbox OUs and three SCPs (region restriction, deny root usage, require encryption) attached to the Workloads OU |
 | `modules/iam-baseline` | IAM role for AWS Config in the workload account |
 | `modules/logging` | Org-wide CloudTrail to an encrypted S3 bucket in the management account, with lifecycle to STANDARD_IA at 90d and expiry at 365d |
-| `modules/compliance` | AWS Config recorder + delivery channel, three managed rules (EC2 IMDSv2, restricted SSH, S3 encryption), SNS topic for `NON_COMPLIANT` notifications |
+| `modules/compliance` | AWS Config recorder + delivery channel, two managed rules (EC2 IMDSv2, restricted SSH), SNS topic with message-body filter so only `ComplianceChangeNotification` events reach email subscribers |
 | `environments/workload-dev` | Composes the four modules into a single root |
 | `.github/workflows/terraform.yml` | tfsec + Checkov scan -> plan -> manual-approval -> apply |
 
@@ -32,8 +32,8 @@ rules, and the SNS topic emails non-compliant findings to an operator.
 
 ### Workload-dev account (Workloads OU)
 - AWS Config recorder + delivery channel
-- Three managed Config rules
-- SNS topic with email subscription for compliance notifications
+- Two managed Config rules
+- SNS topic with policy granting AWS Config publish, message-body filter on email subscription so only compliance-change events get delivered
 
 ## CI/CD pipeline
 

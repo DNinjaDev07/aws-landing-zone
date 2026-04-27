@@ -18,6 +18,5 @@ output "config_rule_names" {
   value = [
     aws_config_config_rule.ec2_imdsv2_check.name,
     aws_config_config_rule.incoming_ssh_disabled.name,
-    aws_config_config_rule.s3_encryption_enabled.name,
   ]
 }

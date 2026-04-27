@@ -110,10 +110,34 @@ resource "aws_sns_topic" "compliance_alerts" {
   tags = var.tags
 }
 
+data "aws_iam_policy_document" "compliance_alerts_topic" {
+  statement {
+    sid     = "AllowConfigPublish"
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["config.amazonaws.com"]
+    }
+
+    resources = [aws_sns_topic.compliance_alerts.arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "compliance_alerts" {
+  arn    = aws_sns_topic.compliance_alerts.arn
+  policy = data.aws_iam_policy_document.compliance_alerts_topic.json
+}
+
 resource "aws_sns_topic_subscription" "email_alerts" {
-  topic_arn = aws_sns_topic.compliance_alerts.arn
-  protocol  = "email"
-  endpoint  = var.notification_email
+  topic_arn           = aws_sns_topic.compliance_alerts.arn
+  protocol            = "email"
+  endpoint            = var.notification_email
+  filter_policy_scope = "MessageBody"
+  filter_policy = jsonencode({
+    messageType = ["ComplianceChangeNotification"]
+  })
 }
 
 resource "aws_config_configuration_recorder" "this" {
@@ -167,13 +191,3 @@ resource "aws_config_config_rule" "incoming_ssh_disabled" {
   depends_on = [aws_config_configuration_recorder_status.this]
 }
 
-resource "aws_config_config_rule" "s3_encryption_enabled" {
-  name = "${var.environment}-s3-encryption-enabled"
-
-  source {
-    owner             = "AWS"
-    source_identifier = "S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED"
-  }
-
-  depends_on = [aws_config_configuration_recorder_status.this]
-}
