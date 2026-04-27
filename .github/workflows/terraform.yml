@@ -16,6 +16,7 @@ env:
   TF_USE_LOCKFILE: true
   TF_VAR_environment: workload-dev
   TF_VAR_workload_account_id: 128624577044
+  TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
 
 jobs:
   tf-scan:
@@ -62,11 +63,11 @@ jobs:
 
       - name: Terraform Validate
         working-directory: environments/workload-dev
-        run: terraform validate
+        run: terraform validate -no-color
 
       - name: Terraform Plan
         working-directory: environments/workload-dev
-        run: terraform plan -no-color -out=tfplan
+        run: terraform plan -no-color -input=false -out=tfplan
 
       - name: Upload Terraform Plan
         uses: actions/upload-artifact@v4
@@ -105,4 +106,4 @@ jobs:
 
       - name: Terraform Apply
         working-directory: environments/workload-dev
-        run: terraform apply -auto-approve -no-color tfplan
+        run: terraform apply -auto-approve -no-color -input=false tfplan
