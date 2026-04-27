@@ -77,7 +77,6 @@ jobs:
   tf-apply:
     runs-on: ubuntu-latest
     needs: tf-plan
-    environment: production
     steps:
       - uses: actions/checkout@v4
 

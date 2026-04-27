@@ -41,7 +41,7 @@ rules, and the SNS topic emails non-compliant findings to an operator.
 |---|---|
 | `tf-scan` | tfsec + Checkov (soft-fail) |
 | `tf-plan` | OIDC auth, `terraform plan`, plan uploaded as artifact |
-| `tf-apply` | Gated by GitHub Environment `production` (required reviewer); downloads plan artifact and applies |
+| `tf-apply` | Downloads the plan artifact and applies on every push to `main` |
 
 The workflow targets `environments/workload-dev` only. You apply the two
 `bootstrap/` roots locally one time. They create the state bucket and the
@@ -100,10 +100,7 @@ with a least-privilege deploy policy once your resource set stabilizes.
 ### 4. Configure GitHub repo
 
 1. The workflow reads no GitHub Actions secrets. OIDC handles auth.
-2. In Settings → Environments, create an environment named `production` and
-   add yourself as a Required reviewer. This gates `tf-apply` behind a
-   click-to-approve.
-3. Update `AWS_OIDC_ROLE_ARN` in `.github/workflows/terraform.yml` if your
+2. Update `AWS_OIDC_ROLE_ARN` in `.github/workflows/terraform.yml` if your
    `bootstrap/github-oidc` output ARN differs.
 
 ### 5. Generate workload backend config
@@ -135,7 +132,7 @@ git commit -m "deploy workload-dev"
 git push origin main
 ```
 
-GitHub Actions runs scan + plan, then waits at `tf-apply` for your approval.
+GitHub Actions runs scan, plan, and apply on every push to `main`.
 
 ## Tear down
 
@@ -167,3 +164,9 @@ SKIP_BOOTSTRAP=1 ./scripts/teardown.sh   # leave state + OIDC intact
 ./scripts/generate-backend-dev.sh
 ```
 
+## Next steps
+
+For a team setting, add a GitHub Environment called `production` to the
+`tf-apply` job and require a human reviewer before apply. In a single-engineer
+setup you commit, review the diff yourself, then push to deploy, so the
+reviewer gate adds friction without adding safety.
