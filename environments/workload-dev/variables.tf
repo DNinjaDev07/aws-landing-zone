@@ -40,3 +40,14 @@ variable "cloudtrail_log_bucket_name" {
   type        = string
   default     = ""
 }
+
+variable "alert_email" {
+  description = "Email address for compliance SNS notifications."
+  type        = string
+}
+
+variable "config_snapshot_bucket_name" {
+  description = "Optional override for AWS Config snapshot bucket name in workload account."
+  type        = string
+  default     = ""
+}

@@ -1,204 +1,169 @@
-# AWS Landing Zone with Compliance Automation
+# AWS Landing Zone
 
 ![Architecture](docs/aws-landing-zone-architecture.drawio.png)
 
-This repository builds an AWS Landing Zone in phases using Terraform and GitHub Actions with OIDC.
+A multi-account AWS Landing Zone built with Terraform and deployed via GitHub
+Actions using OIDC (no long-lived AWS keys in CI).
 
-## Current Scope
-
-Implemented in this repository today:
-
-1. Bootstrap remote Terraform state in AWS S3 with S3 native state locking.
-2. Bootstrap GitHub OIDC provider and IAM role for GitHub Actions.
-3. Workload environment backend configuration and examples.
-4. CI workflow scaffold at `.github/workflows/terraform.yml`.
-
-Core landing zone modules (org/SCPs, VPC, logging, compliance automation) are the next implementation phases.
-
-## Target Architecture Context
-
-### CI/CD Pipeline
-
-| Stage | Purpose |
-|---|---|
-| Security Scan | Checkov and tfsec scan Terraform for misconfigurations |
-| Terraform Plan | Plan output is reviewed before apply |
-| Manual Approval | GitHub Environment protection rule gates apply |
-| Terraform Apply | OIDC-authenticated apply with no stored AWS credentials |
-| Lambda Tests | pytest + Bandit run against remediation functions |
-
-### Management Account
+## What's in here
 
 | Component | Purpose |
 |---|---|
-| Terraform State | S3 bucket (encrypted, versioned) with S3 locking enabled |
-| OIDC Provider | GitHub Actions trust via `sts:AssumeRoleWithWebIdentity` |
-| AWS Organizations | Workloads OU and Sandbox OU with member accounts |
-| Service Control Policies | Region restriction, deny root usage, require encryption |
-| Organization CloudTrail | Multi-region trail to S3 log archive (90d to Standard-IA, 365d expire) |
-| IAM Baseline | Account password policy and cross-account Terraform execution role |
+| `bootstrap/state` | S3 remote state bucket (versioned, AES256, S3 native locking) |
+| `bootstrap/github-oidc` | GitHub OIDC provider + IAM role for CI |
+| `modules/organization` | Workloads + Sandbox OUs and three SCPs (region restriction, deny root usage, require encryption) attached to the Workloads OU |
+| `modules/iam-baseline` | IAM role for AWS Config in the workload account |
+| `modules/logging` | Org-wide CloudTrail to an encrypted S3 bucket in the management account, with lifecycle to STANDARD_IA at 90d and expiry at 365d |
+| `modules/compliance` | AWS Config recorder + delivery channel, three managed rules (EC2 IMDSv2, restricted SSH, S3 encryption), SNS topic for `NON_COMPLIANT` notifications |
+| `environments/workload-dev` | Composes the four modules into a single root |
+| `.github/workflows/terraform.yml` | tfsec + Checkov scan -> plan -> manual-approval -> apply |
 
-### Workload-Dev Account (Workloads OU)
+The scope is governance and detection. VPC provisioning and Lambda-based
+auto-remediation are out of scope. AWS Config evaluates the three managed
+rules, and the SNS topic emails non-compliant findings to an operator.
 
-| Component | Purpose |
+## Architecture summary
+
+### Management account
+- Terraform state S3 bucket
+- GitHub OIDC provider + role
+- AWS Organizations OUs and SCPs
+- Organization CloudTrail and log archive bucket
+
+### Workload-dev account (Workloads OU)
+- AWS Config recorder + delivery channel
+- Three managed Config rules
+- SNS topic with email subscription for compliance notifications
+
+## CI/CD pipeline
+
+| Stage | What runs |
 |---|---|
-| VPC | 2 public + 2 private subnets across 2 AZs, single NAT Gateway, VPC Flow Logs |
-| AWS Config | 3 managed rules: EC2 IMDSv2, restricted SSH, S3 encryption |
-| EventBridge | Matches `NON_COMPLIANT` evaluation results from Config |
-| Lambda | `remediate_public_sg` revokes `0.0.0.0/0` SSH rules from security groups |
-| Lambda | `remediate_imdsv1` enforces IMDSv2 on non-compliant EC2 instances |
-| SNS | Email notifications on compliance violations |
+| `tf-scan` | tfsec + Checkov (soft-fail) |
+| `tf-plan` | OIDC auth, `terraform plan`, plan uploaded as artifact |
+| `tf-apply` | Gated by GitHub Environment `production` (required reviewer); downloads plan artifact and applies |
 
-## Important Execution Model
-
-Terraform runs per root directory. Running `terraform apply` in one root does not apply other roots.
-
-| Root | Purpose | Applied Separately |
-|---|---|---|
-| `bootstrap/state` | Create remote state bucket | Yes |
-| `bootstrap/github-oidc` | Create GitHub OIDC trust + IAM role | Yes |
-| `environments/workload-dev` | Main landing-zone environment | Yes |
+The workflow targets `environments/workload-dev` only. You apply the two
+`bootstrap/` roots locally one time. They create the state bucket and the
+IAM role that CI itself depends on, so CI cannot bootstrap them.
 
 ## Prerequisites
 
-1. Terraform `>= 1.6`.
-2. AWS CLI configured with credentials that can create IAM/S3 resources in your management account.
-3. GitHub repository: `DNinjaDev07/aws-landing-zone`.
-4. Bash shell (for `scripts/generate-backend-dev.sh`).
+1. Terraform `>= 1.10` (S3 native state locking).
+2. AWS CLI configured against the management account with permissions to
+   create IAM, S3, and Organizations resources.
+3. A GitHub repository at `DNinjaDev07/aws-landing-zone`.
+4. Bash (for `scripts/generate-backend-dev.sh`).
+5. Organizations trusted access for CloudTrail enabled in the management
+   account before applying the logging module:
 
-## Reproduce the Project (Step-by-Step)
+   ```bash
+   aws organizations enable-aws-service-access \
+     --service-principal cloudtrail.amazonaws.com
+   ```
 
-### 1. Clone and enter repository
+## Reproduce the project
+
+### 1. Clone
 
 ```bash
 git clone git@github.com:DNinjaDev07/aws-landing-zone.git
 cd aws-landing-zone
 ```
 
-### 2. Bootstrap Terraform state (one-time)
+### 2. Bootstrap remote state (one-time)
 
 ```bash
 cd bootstrap/state
 terraform init
-terraform plan
 terraform apply
 terraform output
 ```
-
-Expected outputs include:
-
-1. `state_bucket_name`
-2. `state_bucket_region`
 
 ### 3. Bootstrap GitHub OIDC (one-time)
 
 ```bash
 cd ../github-oidc
 terraform init
-terraform plan
 terraform apply
 terraform output
 ```
 
-Expected outputs include:
+The trust policy is scoped to:
 
-1. `github_oidc_provider_arn`
-2. `github_oidc_role_arn`
+- `repo:DNinjaDev07/aws-landing-zone:ref:refs/heads/main`
+- `repo:DNinjaDev07/aws-landing-zone:pull_request`
 
-The OIDC trust policy is scoped to:
+The role uses `AdministratorAccess` for the bootstrap phase. Replace it
+with a least-privilege deploy policy once your resource set stabilizes.
 
-1. `repo:DNinjaDev07/aws-landing-zone:ref:refs/heads/main`
-2. `repo:DNinjaDev07/aws-landing-zone:pull_request`
+### 4. Configure GitHub repo
 
-### 4. Generate backend config for workload-dev
+1. The workflow reads no GitHub Actions secrets. OIDC handles auth.
+2. In Settings → Environments, create an environment named `production` and
+   add yourself as a Required reviewer. This gates `tf-apply` behind a
+   click-to-approve.
+3. Update `AWS_OIDC_ROLE_ARN` in `.github/workflows/terraform.yml` if your
+   `bootstrap/github-oidc` output ARN differs.
+
+### 5. Generate workload backend config
 
 ```bash
 cd ../..
 ./scripts/generate-backend-dev.sh
 ```
 
-This writes:
+Writes `environments/workload-dev/backend-dev.hcl` (gitignored).
 
-1. `environments/workload-dev/backend-dev.hcl`
-
-Note: `backend-dev.hcl` is intentionally gitignored.
-
-### 5. Initialize workload-dev root with remote backend
+### 6. Init and plan workload-dev locally
 
 ```bash
 cd environments/workload-dev
-cp terraform.tfvars.example terraform.tfvars
+cp terraform.tfvars.example terraform.tfvars   # fill in real values
 terraform init -backend-config=backend-dev.hcl -reconfigure
 terraform plan
 ```
 
-Important: keep regions consistent across:
+Keep regions consistent across `bootstrap/state`, `bootstrap/github-oidc`,
+`backend-dev.hcl`, and `terraform.tfvars`.
 
-1. `bootstrap/state` provider region
-2. `bootstrap/github-oidc` provider region
-3. `environments/workload-dev/backend-dev.hcl`
-4. `environments/workload-dev/terraform.tfvars`
-
-### 6. Configure and run CI workflow
-
-Workflow file: `.github/workflows/terraform.yml`.
-
-Set `role-to-assume` to the `github_oidc_role_arn` output from `bootstrap/github-oidc`.
-
-Push to `main` to trigger pipeline:
+### 7. Apply via CI
 
 ```bash
 git add .
-git commit -m "your commit message"
+git commit -m "deploy workload-dev"
 git push origin main
 ```
 
-## Pipeline Flow (Current)
+GitHub Actions runs scan + plan, then waits at `tf-apply` for your approval.
 
-1. `tf-scan`: tfsec + Checkov.
-2. `tf-plan`: OIDC auth + Terraform init/plan for `environments/workload-dev`.
-3. `tf-apply`: scaffold exists and is completed in later phases.
+## Tear down
 
-The workflow targets `environments/workload-dev` only. It does not apply `bootstrap/state` or `bootstrap/github-oidc`.
+`scripts/teardown.sh` destroys everything in reverse order:
 
-## Process Flow
+1. `environments/workload-dev` (detaches SCPs, stops Config recorder, empties
+   versioned buckets, strips `prevent_destroy` lifecycle blocks, then
+   `terraform destroy`)
+2. `bootstrap/github-oidc`
+3. `bootstrap/state` (empties the state bucket first)
 
-```text
-bootstrap/state apply
-    -> creates remote Terraform state bucket
-bootstrap/github-oidc apply
-    -> creates GitHub OIDC provider + IAM role
-generate backend-dev.hcl
-    -> points workload root to remote backend
-workload-dev init/plan/apply
-    -> deploys landing-zone environment stack
-GitHub Actions (OIDC)
-    -> scan -> plan -> apply workflow
+```bash
+./scripts/teardown.sh                # interactive
+FORCE=1 ./scripts/teardown.sh        # no prompts
+SKIP_BOOTSTRAP=1 ./scripts/teardown.sh   # leave state + OIDC intact
 ```
 
 ## Troubleshooting
 
-### Error: "Credentials could not be loaded"
+### `Credentials could not be loaded` in CI
 
-Check all of these:
+- Workflow has `permissions: id-token: write` and `contents: read`.
+- IAM trust `sub` matches your repo, branch, and event type.
+- `role-to-assume` and `aws-region` are correct.
 
-1. Workflow permissions include `id-token: write` and `contents: read`.
-2. IAM trust policy `sub` matches your repo/branch/event.
-3. Workflow uses the correct role ARN and region.
-
-### Error: backend config not found
-
-Regenerate backend file:
+### Backend config not found
 
 ```bash
 ./scripts/generate-backend-dev.sh
 ```
 
-## Next Implementation Phases
-
-1. Organizations + OUs + SCPs module.
-2. IAM baseline module (cross-account role and policies).
-3. VPC module.
-4. Logging module.
-5. Compliance module (Config, EventBridge, Lambda remediation, SNS).
-6. Complete production-ready plan/apply pipeline flow.

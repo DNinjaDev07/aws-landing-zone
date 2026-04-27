@@ -42,3 +42,6 @@ environments/**/backend-*.hcl
 
 # Planning
 PROJECT_1_LANDING_ZONE_PLAN.md
+
+# Personal scripts (not for git)
+scripts/teardown.sh

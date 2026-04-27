@@ -3,6 +3,8 @@
 
 environment                  = "workload-dev"
 aws_region                   = "us-east-2"
-workload_account_id          = "REPLACE_ME"
+workload_account_id          = "123456789012"
 workload_bootstrap_role_name = "OrganizationAccountAccessRole"
 cloudtrail_log_bucket_name   = ""
+config_snapshot_bucket_name  = ""
+alert_email                  = "REPLACE_ME@example.com"
