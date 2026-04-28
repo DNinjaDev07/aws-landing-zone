@@ -3,7 +3,27 @@
 ![Architecture](docs/aws-landing-zone-architecture.drawio.png)
 
 A multi-account AWS Landing Zone built with Terraform and deployed via GitHub
-Actions using OIDC (no long-lived AWS keys in CI).
+Actions using OIDC.
+
+### Architecture walkthrough
+
+Two AWS accounts under one Organization. The management account
+owns the Terraform state bucket, the GitHub OIDC provider,
+the Organizations OUs and SCPs, and the organization-wide CloudTrail. The workload
+account in the Workloads OU owns application resources which for this project include the AWS Config recorder,
+the Config rules and the SNS topic.
+
+GitHub Actions authenticates to AWS by exchanging a workflow OIDC token for
+an IAM role session in the management account. From there, the workload
+provider assumes `OrganizationAccountAccessRole` in the workload account.
+Trust direction reads: GitHub repo -> management account OIDC role ->
+workload account deploy role.
+
+CloudTrail flows the other way. Every account in the Organization writes
+audit events to the log archive bucket in the management account through
+the org-wide trail. SCPs attached to the Workloads OU enforce region
+restriction, deny root usage, and require encryption on EBS launches and S3
+PutObject calls.
 
 ## What's in here
 
@@ -150,23 +170,91 @@ FORCE=1 ./scripts/teardown.sh        # no prompts
 SKIP_BOOTSTRAP=1 ./scripts/teardown.sh   # leave state + OIDC intact
 ```
 
-## Troubleshooting
+## Repository layout
 
-### `Credentials could not be loaded` in CI
-
-- Workflow has `permissions: id-token: write` and `contents: read`.
-- IAM trust `sub` matches your repo, branch, and event type.
-- `role-to-assume` and `aws-region` are correct.
-
-### Backend config not found
-
-```bash
-./scripts/generate-backend-dev.sh
+```
+.
+├── .github/
+│   ├── actions/terraform-init-backend/action.yml   composite init action
+│   └── workflows/terraform.yml                     scan -> plan -> apply
+├── bootstrap/
+│   ├── state/                  Terraform state S3 bucket (one-time apply)
+│   └── github-oidc/            OIDC provider + IAM role for CI (one-time)
+├── environments/
+│   └── workload-dev/           Composes the four modules
+│       ├── backend.tf
+│       ├── backend-dev.hcl.example
+│       ├── main.tf             module "organization", "iam_baseline", "logging", "compliance"
+│       ├── providers.tf        default + workload-aliased provider
+│       ├── terraform.tfvars.example
+│       ├── variables.tf
+│       └── versions.tf
+├── modules/
+│   ├── organization/           OUs, SCPs, attachments
+│   │   └── policies/           three SCP JSON bodies
+│   ├── iam-baseline/           AWS Config role in workload account
+│   ├── logging/                Org CloudTrail + log archive S3 bucket
+│   └── compliance/             Config recorder, rules, SNS, topic policy, filter
+├── scripts/
+│   └── generate-backend-dev.sh    derives backend-dev.hcl from bootstrap outputs
+├── docs/
+│   └── aws-landing-zone-architecture.drawio.png
+└── README.md
 ```
 
-## Next steps
+## Improvements
 
-For a team setting, add a GitHub Environment called `production` to the
-`tf-apply` job and require a human reviewer before apply. In a single-engineer
-setup you commit, review the diff yourself, then push to deploy, so the
-reviewer gate adds friction without adding safety.
+These are some additions that can be made.
+
+### EventBridge route for compliance alerts
+
+The current SNS topic receives `ComplianceChangeNotification` events from
+the AWS Config delivery channel, but those events arrive on AWS Config's
+asynchronous publish schedule and have been observed to lag past ten
+minutes after a rule re-evaluates. Production alerting needs lower latency
+and stronger delivery guarantees.
+
+Add an `aws_cloudwatch_event_rule` with the pattern
+`{"source":["aws.config"],"detail-type":["Config Rules Compliance Change"]}`
+plus an `aws_cloudwatch_event_target` pointing at the existing SNS topic.
+Update the topic policy to grant `events.amazonaws.com` the `SNS:Publish`
+action alongside `config.amazonaws.com`. Roughly fifteen lines of HCL.
+EventBridge fires per rule evaluation, in real time, with no batching.
+
+### Lambda remediation pack
+
+Pair each detective Config rule with an automated fix. Create
+`modules/remediation` containing two Lambda functions and an EventBridge
+rule per Config rule:
+
+- `remediate_imdsv1` calls `ec2:ModifyInstanceMetadataOptions` with
+  `HttpTokens=required` on the offending instance ID
+- `remediate_public_sg` calls `ec2:RevokeSecurityGroupIngress` to remove
+  any 0.0.0.0/0:22 rule from the offending security group
+
+Trigger each Lambda from an EventBridge rule scoped to the matching
+`configRuleName` in the compliance change event. Add a CI job that runs
+pytest and Bandit against the function code, gating apply on test pass.
+This shifts the project from "detect and notify" to "detect and fix
+automatically."
+
+### State bucket hardening
+
+Five controls were deferred during bootstrap to keep the initial apply
+simple. Each is worth adding before treating the state bucket as
+production-grade: S3 event notifications for object writes, cross-region
+replication for state durability, server access logging to a dedicated
+log bucket, a lifecycle policy on current versions (only noncurrent
+expiration is set today), and KMS-CMK encryption in place of AES256.
+
+### Tighten OIDC role from AdministratorAccess
+
+The OIDC role in `bootstrap/github-oidc/main.tf` has `AdministratorAccess`
+attached for deployment simplicity. Replace it with a least-privilege
+managed policy or inline document covering only the actions this project
+deploys: `s3:*` on the state and log buckets, `iam:*` for the Config role
+and any future least-privilege roles, `organizations:*` (read-only is
+enough once SCPs are stable), `cloudtrail:*`, `config:*`, `sns:*`,
+`events:*`, and `sts:AssumeRole` scoped to the workload account's deploy
+role ARN. Use IAM Access Analyzer to generate the starting policy from
+recent CloudTrail data after a few apply cycles.
